@@ -1,8 +1,13 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
 
-app = FastAPI()
+from database import create_document, get_documents
+from schemas import PartnerLead
+
+app = FastAPI(title="NCUK B2B API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,7 +19,7 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello from FastAPI Backend!"}
+    return {"message": "NCUK B2B Backend Running"}
 
 @app.get("/api/hello")
 def hello():
@@ -64,6 +69,33 @@ def test_database():
     
     return response
 
+# -------------------------------
+# Lead capture endpoints
+# -------------------------------
+
+class LeadResponse(BaseModel):
+    id: str
+
+@app.post("/api/leads", response_model=LeadResponse)
+async def create_lead(lead: PartnerLead):
+    try:
+        lead_id = create_document("partnerlead", lead)
+        return {"id": lead_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/leads")
+async def list_leads(country: Optional[str] = None, limit: int = 50):
+    try:
+        filter_q = {"country": country} if country else {}
+        docs = get_documents("partnerlead", filter_q, limit=limit)
+        # Convert ObjectId to string for _id
+        for d in docs:
+            if "_id" in d:
+                d["_id"] = str(d["_id"])
+        return {"items": docs, "count": len(docs)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
